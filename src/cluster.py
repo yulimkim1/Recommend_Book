@@ -11,13 +11,13 @@ load_dotenv()
 
 API_KEY = os.getenv('GOOGLE_BOOKS_API_KEY')
 
-#saved KMeans model, scalar, and feature columns
+#saved KMeans model, scaler, and feature columns
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
-kmeans = joblib.load(os.path.join(DATA_DIR, "kmeans_model.joblib"))
-scalar = joblib.load(os.path.join(DATA_DIR, "scaler.joblib"))
-feature_columns = joblib.load(os.path.join(DATA_DIR, "feature_columns.joblib"))
+kmeans = joblib.load(os.path.join(DATA_DIR, "kmeans_model.pkl"))
+scaler = joblib.load(os.path.join(DATA_DIR, "scaler.pkl"))
+feature_columns = joblib.load(os.path.join(DATA_DIR, "feature_columns.pkl"))
 df = pd.read_csv(os.path.join(DATA_DIR, "books.csv"))
 
 
@@ -25,7 +25,7 @@ df = pd.read_csv(os.path.join(DATA_DIR, "books.csv"))
 def get_book_info(title):
     """given title, collect book's info from google books api"""
     url = "https://www.googleapis.com/books/v1/volumes"
-    params = {"q": f"title:{title}",
+    params = {"q": f"intitle:{title}",
             "key": API_KEY, 
             "maxResults": 1,
             "printType": "books",
@@ -66,7 +66,8 @@ def process_book_features(book_data):
     page_count = book_data["page_count"] if book_data["page_count"] > 0 else df["page_count"].median()
 
     #scale page count and publish year together 
-    scaled_values = scalar.transform([[page_count, year]])[0]
+    # scaled_values = scaler.transform([[page_count, year]])[0]
+    scaled_values = scaler.transform(pd.DataFrame([[page_count, year]], columns=["page_count", "publish_year"]))[0]
     vector["page_count_scaled"] = scaled_values[0]
     vector["publish_year_scaled"] = scaled_values[1]
 
@@ -92,7 +93,7 @@ def get_recommendations(title, n=5):
     #no match 
     if not book_info:
         return f"No book found with title '{title}'"
-
+    
     #build feature vector 
     book_vector = process_book_features(book_info)
     #get cluster prediction with new features 
