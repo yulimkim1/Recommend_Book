@@ -102,6 +102,10 @@ def build_books_dataset():
     # #drop with no page count -- potentially inaccurate data 
     df = df[df["page_count"] > 0]
 
+    #drop academic books 
+    academic_categories = ["Literary Criticism", "Reference", "Language Arts & Disciplines"]
+    df = df[~df["categories"].str.contains("|".join(academic_categories), na=False)]
+
     #normalize published date
     df["published_date"] = df["published_date"].apply(normalize_date)
 
