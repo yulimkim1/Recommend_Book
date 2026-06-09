@@ -17,6 +17,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 
 kmeans = joblib.load(os.path.join(DATA_DIR, "kmeans_model.pkl"))
 scaler = joblib.load(os.path.join(DATA_DIR, "scaler.pkl"))
+tfidf = joblib.load(os.path.join(DATA_DIR, "tfidf_vectorizer.pkl"))
 feature_columns = joblib.load(os.path.join(DATA_DIR, "feature_columns.pkl"))
 df = pd.read_csv(os.path.join(DATA_DIR, "books.csv"))
 
@@ -46,7 +47,8 @@ def get_book_info(title):
         "subject": ", ".join(info.get("categories", ["Unknown"])),
         "categories": ", ".join(info.get("categories", ["Unknown"])),
         "page_count": info.get("pageCount", 0),
-        "published_date": info.get("publishedDate", "Unknown")
+        "published_date": info.get("publishedDate", "Unknown"),
+        "description": info.get("description", "")
     }
     return book_data
 
@@ -83,6 +85,15 @@ def process_book_features(book_data):
         if cat_col in vector.columns:
             vector[cat_col] = 1
 
+    #tf-idf
+    description = book_data.get("description", "")
+    if description:
+        tfidf_vector = tfidf.transform([description]).toarray()[0]
+        tfidf_feature_names = [f"tfidf_{term}" for term in tfidf.get_feature_names_out()]
+        for f_name, f_val in zip(tfidf_feature_names, tfidf_vector):
+            if f_name in vector.columns:
+                vector[f_name] = f_val
+
     return vector 
 
 def get_recommendations(title, n=5):
@@ -97,7 +108,7 @@ def get_recommendations(title, n=5):
     #build feature vector 
     book_vector = process_book_features(book_info)
     #get cluster prediction with new features 
-    cluster_id = kmeans.predict(book_vector)[0]
+    cluster_id = int(kmeans.predict(book_vector)[0])
 
     #get books from matching predicted cluster
     #make sure it is not the same as given title 
