@@ -1,0 +1,33 @@
+#workflow on push 
+name: CI
+#trigger - runs on push to main or pull request 
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest #use linux machine to test 
+    # pull code into new machine 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # install python 3.12
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      # install all requirements
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # run all the test files 
+      - name: Run tests
+        run: |
+          pytest tests/ -v
