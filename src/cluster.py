@@ -6,6 +6,8 @@ import joblib
 import os
 import requests
 from dotenv import load_dotenv
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 load_dotenv()
 
@@ -19,6 +21,7 @@ kmeans = joblib.load(os.path.join(DATA_DIR, "kmeans_model.pkl"))
 scaler = joblib.load(os.path.join(DATA_DIR, "scaler.pkl"))
 tfidf = joblib.load(os.path.join(DATA_DIR, "tfidf_vectorizer.pkl"))
 feature_columns = joblib.load(os.path.join(DATA_DIR, "feature_columns.pkl"))
+features = joblib.load(os.path.join(DATA_DIR, "features.pkl"))
 df = pd.read_csv(os.path.join(DATA_DIR, "books.csv"))
 
 
@@ -112,11 +115,24 @@ def get_recommendations(title, n=5):
 
     #get books from matching predicted cluster
     #make sure it is not the same as given title 
-    cluster_books = df[(df["cluster"] == cluster_id) & (df["title"].str.lower() != book_info["title"].lower())]
+    cluster_books = df[(df["cluster"] == cluster_id) & (df["title"].str.lower() != book_info["title"].lower())].copy()
 
     #return n recommendations 
     #random sample of the cluster
-    book_recommendations = cluster_books.sample(min(n, len(cluster_books)))
+    # book_recommendations = cluster_books.sample(min(n, len(cluster_books)))
+
+    #get feature matrix rows for cluster books 
+    cluster_indices = cluster_books.index
+    cluster_features = features.loc[cluster_indices]
+
+    #calculate cosine similarity 
+    similarities = cosine_similarity(book_vector, cluster_features)[0]
+
+    cluster_books["sim_score"] = similarities
+
+    #sample using cosine similarity 
+    book_recommendations = cluster_books.sort_values("sim_score", ascending = False).head(n)
+
 
     return book_info, book_recommendations[["title", "authors", "subject", "categories"]]
 

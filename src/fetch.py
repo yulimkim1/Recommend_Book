@@ -111,7 +111,7 @@ def build_books_dataset():
 
     #remove any books with NA publish date OR publish date before 1950
     df = df.dropna(subset=["published_date"])
-    cutoff_date = pd.Timestamp("1950-01-01")
+    cutoff_date = pd.Timestamp("1990-01-01")
     df = df[df["published_date"] >= cutoff_date]
 
     print(f"dataset built with {len(df)} books")
