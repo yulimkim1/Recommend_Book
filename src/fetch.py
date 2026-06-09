@@ -11,7 +11,7 @@ load_dotenv()
 API_KEY = os.getenv('GOOGLE_BOOKS_API_KEY')
 print("API KEY loaded:", API_KEY is not None)
 
-def get_books_by_genre(genre, max_results = 120):
+def get_books_by_genre(genre, max_results = 200):
     """get books from google books api by genre"""
     """paginate since API can only pull 40 books at a time"""
     url = "https://www.googleapis.com/books/v1/volumes"
