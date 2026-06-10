@@ -22,8 +22,47 @@ scaler = joblib.load(os.path.join(DATA_DIR, "scaler.pkl"))
 tfidf = joblib.load(os.path.join(DATA_DIR, "tfidf_vectorizer.pkl"))
 feature_columns = joblib.load(os.path.join(DATA_DIR, "feature_columns.pkl"))
 features = joblib.load(os.path.join(DATA_DIR, "features.pkl"))
+feature_weights = joblib.load(os.path.join(DATA_DIR, "feature_weights.pkl"))
 df = pd.read_csv(os.path.join(DATA_DIR, "books.csv"))
 
+#need to infer genre for given book into ones used in search when fetching data 
+#use categories AND descriptions to help build 
+def infer_subject(categories_str, description=""):
+    text = (categories_str + " " + description).lower()
+    mapping = [
+        #subject                #keyword
+        ("historical fiction", ["historical fiction", "historical"]),
+        ("science fiction",    ["science fiction", "sci-fi", "dystopian"]),
+        ("fantasy",            ["fantasy", "magic", "dragons"]),
+        ("mystery",            ["mystery", "detective"]),
+        ("thriller",           ["thriller", "suspense"]),
+        ("romance",            ["romance", "love story"]),
+        ("biography",          ["biography", "memoir", "autobiography"]),
+        ("self help",          ["self-help", "self help"]),
+        ("science",            ["science"]),
+        ("fiction",            ["fiction", "novel"]),
+    ]
+        
+    for subject, keywords in mapping:
+        if any(k in text for k in keywords):
+            return subject
+    #if no other matches, non fiction -- largest range of categories 
+    return "nonfiction"
+
+#function to apply feature weights 
+def apply_weights(vector, weights):
+    for col in vector.columns:
+        if col == "page_count_scaled":
+            vector[col] *= weights["page"]
+        elif col == "publish_year_scaled":
+            vector[col] *= weights["publish"]
+        elif col.startswith("subject_"):
+            vector[col] *= weights["subject"]
+        elif col.startswith("category_"):
+            vector[col] *= weights["category"]
+        elif col.startswith("tfidf_"):
+            vector[col] *= weights["tfidf"]
+    return vector
 
 #get book info from google books api with title 
 def get_book_info(title):
@@ -31,9 +70,10 @@ def get_book_info(title):
     url = "https://www.googleapis.com/books/v1/volumes"
     params = {"q": f"intitle:{title}",
             "key": API_KEY, 
-            "maxResults": 1,
+            "maxResults": 10,
             "printType": "books",
-            "langRestrict": "en"
+            "langRestrict": "en",
+            "orderBy": 'relevance'
         }
     
     response = requests.get(url, params = params)
@@ -43,17 +83,31 @@ def get_book_info(title):
     if not items:
         return None
 
-    info = items[0].get("volumeInfo", {})
-    book_data ={
-        "title": info.get("title", "Unknown"),
-        "authors": ", ".join(info.get("authors", ["Unknown"])),
-        "subject": ", ".join(info.get("categories", ["Unknown"])),
-        "categories": ", ".join(info.get("categories", ["Unknown"])),
-        "page_count": info.get("pageCount", 0),
-        "published_date": info.get("publishedDate", "Unknown"),
-        "description": info.get("description", "")
+    #look for the best book with categories 
+    # prefer an edition that actually has categories
+    def score(info):
+        cats = " ".join(info.get("categories", [])).lower()
+        #ideally any edition that has more than "fiction"
+        specific = any(k in cats for k in
+            ["historical", "science fiction", "fantasy", "mystery", "thriller",
+             "romance", "biography", "memoir", "detective", "suspense"])
+        return (specific, bool(info.get("description")), bool(info.get("categories")))
+
+    #find best edition 
+    best = max((it.get("volumeInfo", {}) for it in items), key=score)
+
+    categories = ", ".join(best.get("categories", ["Unknown"]))
+
+    return {
+        "title": best.get("title", "Unknown"),
+        "authors": ", ".join(best.get("authors", ["Unknown"])),
+        "subject": infer_subject(categories, best.get("description", "")),
+        "categories": categories,
+        "page_count": best.get("pageCount", 0),
+        "published_date": best.get("publishedDate", "Unknown"),
+        "description": best.get("description", ""),
     }
-    return book_data
+
 
 #process book data to match features in cluster model 
 def process_book_features(book_data):
@@ -76,15 +130,14 @@ def process_book_features(book_data):
     vector["page_count_scaled"] = scaled_values[0]
     vector["publish_year_scaled"] = scaled_values[1]
 
-
     #subject 
-    subject_col = f"subject_{book_data['subject']}".lower().replace(" ", "_")
+    subject_col = f"subject_{book_data['subject']}".lower().replace(' ', '_')
     if subject_col in vector.columns:
         vector[subject_col] = 1
 
     #category 
     for cat in book_data["categories"].split(","):
-        cat_col = f"category_{cat.strip().lower().replace(" ", "_")}"
+        cat_col = f"category_{cat.strip().lower().replace(' ', '_')}"
         if cat_col in vector.columns:
             vector[cat_col] = 1
 
@@ -97,42 +150,31 @@ def process_book_features(book_data):
             if f_name in vector.columns:
                 vector[f_name] = f_val
 
+    #apply weights to vector 
+    vector = apply_weights(vector, feature_weights)
+
     return vector 
 
 def get_recommendations(title, n=5):
-    """takes in book title, returns n recommended books based on clustering similarity"""
     #get book info from API 
     book_info = get_book_info(title)
-
     #no match 
     if not book_info:
         return f"No book found with title '{title}'"
-    
     #build feature vector 
     book_vector = process_book_features(book_info)
-    #get cluster prediction with new features 
-    cluster_id = int(kmeans.predict(book_vector)[0])
 
-    #get books from matching predicted cluster
-    #make sure it is not the same as given title 
-    cluster_books = df[(df["cluster"] == cluster_id) & (df["title"].str.lower() != book_info["title"].lower())].copy()
 
-    #return n recommendations 
-    #random sample of the cluster
-    # book_recommendations = cluster_books.sample(min(n, len(cluster_books)))
+    #use cosine similarity 
+    similarities = cosine_similarity(book_vector, features)[0]
+    #add in sim scores 
+    df_scored = df.copy()
+    df_scored["sim_score"] = similarities
 
-    #get feature matrix rows for cluster books 
-    cluster_indices = cluster_books.index
-    cluster_features = features.loc[cluster_indices]
+    # exclude the searched book 
+    df_scored = df_scored[df_scored["title"].str.lower() != book_info["title"].lower()]
 
-    #calculate cosine similarity 
-    similarities = cosine_similarity(book_vector, cluster_features)[0]
-
-    cluster_books["sim_score"] = similarities
-
-    #sample using cosine similarity 
-    book_recommendations = cluster_books.sort_values("sim_score", ascending = False).head(n)
-
+    # top n by similarity
+    book_recommendations = df_scored.sort_values("sim_score", ascending=False).head(n)
 
     return book_info, book_recommendations[["title", "authors", "subject", "categories"]]
-
