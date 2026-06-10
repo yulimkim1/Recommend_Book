@@ -1,18 +1,69 @@
 # Recommend_Book
-Something to help me discover new books! 
+A command-line tool that recommends books based on one you've recently read. 
+Built with Python, Google Books API, KMeans clustering, and TF-IDF. 
 
+By Yulim. 
+ 
+#### How it works 
+1. Provide book title
+2. Tool fetches metadata from Google Books API
+3. Builds weighted feature vector from book's genre, categories, page count, publish year, and description 
+4. Ranks every book in the dataset by cosine similarity 
+5. Returns most similar books
 
-##### To Use: 
-1. Navigate to project 
-    - cd ~/Desktop/Recommend_Book
-2. Set up environment 
-    - source venv/bin/activate
-3. Run project 
-    - python run.py "Book Title Here"
+#### Tech Stack 
+- Python 
+- Google Books API: for fetching book metadata 
+- pandas: for data cleaning and manipulation 
+- scikit-learn: KMeans clustering, TF-IDF, cosine similarity 
+- joblib: saving/loading trained models 
+- pytest: unit testing 
+- GitHub Actions: automated CI pipeline 
 
+#### How to Run 
+1. Clone the repo 
+```bash
+git clone https://github.com/yourusername/Recommend_Book.git
+cd Recommend_Book
+```
+ 
+2. Create and activate a virtual environment 
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+ 
+3. Install dependencies 
+```bash
+pip install -r requirements.txt
+```
+ 
+4. Set up API key 
+- get free API key from Google Cloud Console 
+- create a .env file in project root: 
+```
+GOOGLE_BOOKS_API_KEY=your_api_key_here
+```
+ 
+5. Build dataset and train the model 
+```bash
+python src/fetch.py
+```
+- Then, open notebooks/clustering.ipynb and run all cells 
+6. Use! 
+```bash
+python run.py "Book Title Here"
+```
+or 
+```bash
+python run.py "Book Title Here" --n 10
+```
 
-##### TO DO 
-- add in TF-IDF for descriptions to create more comprehensive features 
-- do something with Unknown genres/categories 
-- rerun clustering/find new k
-- rerun 
+ 
+### How the model was built 
+- Collected ~720 books across 11 genres using Google Books API with pagination 
+- Engineered features including one-hot encoded genres and categories, normalized page counts and publish year, and TF-IDF keywords extracted from book descriptions
+- Applied and tuned feature weights
+- Used the elbow method to select K=12 clusters 
+- Evaluated clusters visually with PCA 
+- Used cosine similarity across full dataset to rank and return most similar books

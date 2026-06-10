@@ -164,7 +164,6 @@ def get_recommendations(title, n=5):
     #build feature vector 
     book_vector = process_book_features(book_info)
 
-
     #use cosine similarity 
     similarities = cosine_similarity(book_vector, features)[0]
     #add in sim scores 
